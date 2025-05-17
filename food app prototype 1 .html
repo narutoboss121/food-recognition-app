@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Food Recognition App</title>
+</head>
+<body>
+  <h1>Take a picture of your food</h1>
+
+  <video id="video" width="320" height="240" autoplay></video>
+  <br/>
+  <button id="snap">Take Photo</button>
+  <br/>
+  <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+
+  <h2>Recognition Result:</h2>
+  <pre id="result"></pre>
+
+  <h2>Full API Response:</h2>
+  <pre id="fullResponse" style="max-height: 300px; overflow-y: scroll; background: #f0f0f0; padding: 10px;"></pre>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+    const snap = document.getElementById('snap');
+    const resultElem = document.getElementById('result');
+    const fullResponseElem = document.getElementById('fullResponse');
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(stream => {
+        video.srcObject = stream;
+      })
+      .catch(err => {
+        console.error("Error accessing camera: ", err);
+        alert("Could not access camera.");
+      });
+
+    snap.addEventListener('click', () => {
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const base64Image = canvas.toDataURL('image/jpeg').split(',')[1];
+
+      fetch('https://api.clarifai.com/v2/models/food-item-recognition/versions/1d5fd481e0cf4826aa72ec3ff049e044/outputs', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Key 48b28a0617234539908c86eb8b65bc78',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          inputs: [
+            {
+              data: {
+                image: {
+                  base64: base64Image
+                }
+              }
+            }
+          ]
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        fullResponseElem.textContent = JSON.stringify(data, null, 2);
+
+        const concepts = data.outputs?.[0]?.data?.concepts;
+        if (Array.isArray(concepts) && concepts.length > 0) {
+          let outputText = 'Top predictions:\n\n';
+          concepts.forEach(c => {
+            outputText += `${c.name}: ${(c.value * 100).toFixed(2)}%\n`;
+          });
+          resultElem.textContent = outputText;
+        } else {
+          resultElem.textContent = "No predictions found.";
+        }
+      })
+      .catch(err => {
+        console.error('Error:', err);
+        resultElem.textContent = "Error calling Clarifai API.";
+        fullResponseElem.textContent = '';
+      });
+    });
+  </script>
+</body>
+</html>
